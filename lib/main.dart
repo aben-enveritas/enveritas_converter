@@ -256,6 +256,7 @@ class _MassTabState extends State<MassTab> {
 
           return Column(
             children: [
+              // Dropdowns and button
               if (isSmallScreen)
                 Column(children: [
                   _buildDropdown(
@@ -321,27 +322,31 @@ class _MassTabState extends State<MassTab> {
                   ),
                 ]),
               SizedBox(height: 20),
-              if (totalMassResults != null && totalMassResults!.isNotEmpty)
-                ...totalMassResults!.entries.map((entry) {
-                  double baseMass = entry.value;
-                  double conversionRatio = conversionData['coffee_form_conversion'][selectedResultCoffeeForm] ?? 1.0;
-                  double unitConversion = conversionData['mass_unit_conversion'][selectedResultMassUnit] ?? 1.0;
-
-                  double convertedResult = baseMass * conversionRatio / unitConversion;
-
-                  return Text(
-                    "${selectedResultCoffeeForm}: ${convertedResult.toStringAsFixed(2)} ${selectedResultMassUnit}",
-                    style: TextStyle(fontSize: 24.0, fontWeight: FontWeight.bold),
-                  );
-                }).toList()
-              else
-                Text("No results available.", style: TextStyle(fontSize: 16.0)),
+              // Results Display
+              (totalMassResults != null && totalMassResults!.isNotEmpty)
+                  ? _buildTotalResultText()
+                  : Text("No results available.", style: TextStyle(fontSize: 16.0)),
             ],
           );
         },
       ),
     );
   }
+
+  Widget _buildTotalResultText() {
+    double totalConvertedResult = totalMassResults!.entries.map((entry) {
+      double baseMass = entry.value;
+      double conversionRatio = conversionData['coffee_form_conversion'][selectedResultCoffeeForm] ?? 1.0;
+      double unitConversion = conversionData['mass_unit_conversion'][selectedResultMassUnit] ?? 1.0;
+      return baseMass * conversionRatio / unitConversion;
+    }).reduce((value, element) => value + element);
+
+    return Text(
+      "Total ${selectedResultCoffeeForm}: ${totalConvertedResult.toStringAsFixed(2)} ${selectedResultMassUnit}",
+      style: TextStyle(fontSize: 24.0, fontWeight: FontWeight.bold),
+    );
+  }
+
 
   Widget _buildDropdown(String label, String selectedValue, List<String> items, ValueChanged<String?> onChanged) {
     return DropdownButtonFormField<String>(
