@@ -1,0 +1,10 @@
+{
+      "coffee_form_conversion": {
+        "cherry": 6.0,
+        "dry_cherry": 2.0,
+        "wet_parchment": 2.5,
+        "dry_parchment": 1.25,
+        "green": 1.0
+      },
+      "mass_unit_conversion": {"mass": 1.0, "kilogram": 1000.0, "gram": 1.0}
+    }
