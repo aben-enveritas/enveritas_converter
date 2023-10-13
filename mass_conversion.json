@@ -7,11 +7,11 @@
     "green": 1.0
   },
   "mass_unit_conversion": {
+    "kilogram": 1.0,
     "quintal": 100.0,
     "jug": 0.33,
     "feresulla": 17.0,
     "kanta": 18.5,
-    "bag": 50.0,
-    "kilogram": 1.0
+    "bag": 50.0
   }
 }
