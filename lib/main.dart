@@ -28,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late Future<Map<String, dynamic>> massConversionRules;
   late Future<Map<String, dynamic>> areaConversionRules;
   String? selectedCountry = "Ethiopia";
-
+  final primaryColor = Color(0xFF002060);
   final countriesRepo = CountriesRepository();
   final massConversionRepo = MassConversionRepository();
   final areaConversionRepo = AreaConversionRepository();
@@ -39,6 +39,55 @@ class _HomeScreenState extends State<HomeScreen> {
     countries = countriesRepo.fetchCountries();
     _fetchConversionRules();
 
+  }
+
+  Widget _buildDropdown() {
+    return FutureBuilder<List<String>>(
+      future: countries,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done) {
+          if (snapshot.hasError) {
+            return Text("Error");
+          }
+          final items = snapshot.data!.map((String country) {
+            return DropdownMenuItem<String>(
+              value: country,
+              child: Text(
+                country,
+                style: TextStyle(color: Colors.white),
+                overflow: TextOverflow.ellipsis, // Use ellipsis for overflow
+              ),
+            );
+          }).toList();
+
+          return Theme(
+            data: Theme.of(context).copyWith(
+              canvasColor: primaryColor,
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                isExpanded: true, // Expands the dropdown to the maximum width
+                value: selectedCountry,
+                items: items,
+                onChanged: (newValue) {
+                  setState(() {
+                    selectedCountry = newValue!;
+                    _fetchConversionRules();
+                  });
+                },
+                hint: Text(
+                  "Select Country",
+                  style: TextStyle(color: Colors.white),
+                ),
+                iconEnabledColor: Colors.white,
+              ),
+            ),
+          );
+        } else {
+          return CircularProgressIndicator();
+        }
+      },
+    );
   }
 
   _fetchConversionRules() {
@@ -53,54 +102,13 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: Text("Enveritas Unit Converter"),
-          backgroundColor: Color(0xFF002060),
+          backgroundColor: primaryColor,
           actions: [
-            FutureBuilder<List<String>>(
-              future: countries,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.done) {
-                  if (snapshot.hasError) {
-                    return Text("Error");
-                  }
-                  final items = snapshot.data!.map((String country) {
-                    return DropdownMenuItem<String>(
-                      value: country,
-                      child: Text(
-                        country,
-                        style: TextStyle(color: Colors.white), // White font color
-                      ),
-                    );
-                  }).toList();
-
-                  return Theme(
-                    data: Theme.of(context).copyWith(
-                      canvasColor: Colors.transparent, // Transparent background
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: selectedCountry,
-                        items: items,
-                        onChanged: (newValue) {
-                          setState(() {
-                            selectedCountry = newValue!;
-                            _fetchConversionRules();
-                          });
-                        },
-                        hint: Text(
-                          "Select Country",
-                          style: TextStyle(color: Colors.white), // White font color for hint text
-                        ),
-                        iconEnabledColor: Colors.white, // White color for the dropdown icon
-                      ),
-                    ),
-                  );
-                } else {
-                  return CircularProgressIndicator(); // loading indicator while waiting for data
-                }
-              },
-            ),
-            SizedBox(width: 16), // For some spacing on the right // For some spacing on the right
-          ],
+            Container(
+            width: 100, // Fixed width for the dropdown
+            child: _buildDropdown(),
+          ),
+            SizedBox(width: 16),],
           bottom: TabBar(tabs: [Tab(text: 'Mass'), Tab(text: 'Area')]),
         ),
         body: TabBarView(
@@ -289,7 +297,6 @@ class _MassTabState extends State<MassTab> {
 
   void _calculateTotalMass() {
     try {
-      print("Calculating total mass...");
 
       Map<String, double> totalMassesPerCoffeeForm = {};
       Map<String, double> conversionRatios = Map<String, double>.from(
@@ -322,7 +329,6 @@ class _MassTabState extends State<MassTab> {
       setState(() {
         totalMassResults = totalMassesPerCoffeeForm;
       });
-      print("Total mass results: $totalMassResults");
     } catch (e) {
       print("Error during mass calculation: $e");
     }
@@ -548,7 +554,6 @@ class _AreaTabState extends State<AreaTab> {
         isLoading = false;
       });
     } catch (e) {
-      print("Error during fetching conversion data for area: $e");
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Failed to load conversion data")));
       setState(() {
@@ -584,7 +589,7 @@ class _AreaTabState extends State<AreaTab> {
         String unit = _selectedUnits[i];
         totalAreaInSquareMeters += rawArea * _areaUnitConversion[unit]!;
       }
-      print("result: " + totalAreaInSquareMeters.toString());
+
       setState(() {
         _convertedTotalArea =
             totalAreaInSquareMeters / _areaUnitConversion[_selectedResultUnit]!;
@@ -779,10 +784,8 @@ abstract class ConversionRepository {
   Future<Map<String, dynamic>> fetchConversionRules() async {
     try {
       final response = await http.get(Uri.parse(apiUrl));
-      print("Fetched from: " + apiUrl);
       if (response.statusCode == 200) {
         final data = Map<String, dynamic>.from(jsonDecode(response.body));
-        print(data);
         await _saveToLocal(data);
         return data;
       } else {
