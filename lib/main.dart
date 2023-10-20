@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -23,13 +24,26 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late Future<Map<String, dynamic>> conversionRules;
+  late Future<List<String>> countries;
+  late Future<Map<String, dynamic>> massConversionRules;
+  late Future<Map<String, dynamic>> areaConversionRules;
+  String? selectedCountry = "Ethiopia";
+
+  final countriesRepo = CountriesRepository();
+  final massConversionRepo = MassConversionRepository();
+  final areaConversionRepo = AreaConversionRepository();
 
   @override
   void initState() {
     super.initState();
-    conversionRules =
-        ConversionRepository().fetchMassConversionRules();
+    countries = countriesRepo.fetchCountries();
+    _fetchConversionRules();
+
+  }
+
+  _fetchConversionRules() {
+    massConversionRules = massConversionRepo.fetchConversionRules();
+    areaConversionRules = areaConversionRepo.fetchConversionRules();
   }
 
   @override
@@ -40,10 +54,60 @@ class _HomeScreenState extends State<HomeScreen> {
         appBar: AppBar(
           title: Text("Enveritas Unit Converter"),
           backgroundColor: Color(0xFF002060),
+          actions: [
+            FutureBuilder<List<String>>(
+              future: countries,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.done) {
+                  if (snapshot.hasError) {
+                    return Text("Error");
+                  }
+                  final items = snapshot.data!.map((String country) {
+                    return DropdownMenuItem<String>(
+                      value: country,
+                      child: Text(
+                        country,
+                        style: TextStyle(color: Colors.white), // White font color
+                      ),
+                    );
+                  }).toList();
+
+                  return Theme(
+                    data: Theme.of(context).copyWith(
+                      canvasColor: Colors.transparent, // Transparent background
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: selectedCountry,
+                        items: items,
+                        onChanged: (newValue) {
+                          setState(() {
+                            selectedCountry = newValue!;
+                            _fetchConversionRules();
+                          });
+                        },
+                        hint: Text(
+                          "Select Country",
+                          style: TextStyle(color: Colors.white), // White font color for hint text
+                        ),
+                        iconEnabledColor: Colors.white, // White color for the dropdown icon
+                      ),
+                    ),
+                  );
+                } else {
+                  return CircularProgressIndicator(); // loading indicator while waiting for data
+                }
+              },
+            ),
+            SizedBox(width: 16), // For some spacing on the right // For some spacing on the right
+          ],
           bottom: TabBar(tabs: [Tab(text: 'Mass'), Tab(text: 'Area')]),
         ),
         body: TabBarView(
-            children: [MassTab(conversionRules: conversionRules), AreaTab()]),
+            children: [
+              MassTab(conversionRules: massConversionRules, selectedCountry : selectedCountry,),
+              AreaTab(conversionRules: areaConversionRules, selectedCountry: selectedCountry,)
+            ]),
       ),
     );
   }
@@ -51,9 +115,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class MassTab extends StatefulWidget {
   final Future<Map<String, dynamic>> conversionRules;
+  final String? selectedCountry;
 
-
-  MassTab({required this.conversionRules});
+  MassTab({required this.conversionRules, this.selectedCountry});
 
   @override
   _MassTabState createState() => _MassTabState();
@@ -85,19 +149,32 @@ class _MassTabState extends State<MassTab> {
     _fetchConversionData();
   }
 
+  @override
+  void didUpdateWidget(covariant MassTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedCountry != widget.selectedCountry) {
+      _fetchConversionData();
+    }
+  }
+
   _fetchConversionData() async {
     try {
-      conversionData = await widget.conversionRules;
-      coffeeForms = conversionData["coffee_form_conversion"].keys.toList();
-      massUnits = conversionData["mass_unit_conversion"].keys.toList();
+      final conversionRules = await widget.conversionRules;
+      conversionData = widget.selectedCountry != null
+          ? conversionRules[widget.selectedCountry] ?? {}
+          : {};
+      coffeeForms = conversionData["coffee_form_conversion"]?.keys.toList() ?? [];
+      massUnits = conversionData["mass_unit_conversion"]?.keys.toList() ?? [];
+
       if (coffeeForms.isNotEmpty) {
         selectedCoffeeForms[0] = coffeeForms[0];
         selectedResultCoffeeForm = coffeeForms[0];
       }
-      if (massUnits.isNotEmpty){
+      if (massUnits.isNotEmpty) {
         selectedMassUnits[0] = massUnits[0];
         selectedResultMassUnit = massUnits[0];
       }
+
       setState(() {
         isLoading = false;
       });
@@ -117,41 +194,45 @@ class _MassTabState extends State<MassTab> {
     });
   }
 
-
   Widget _buildInputRow(int index) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Check if the smallest side of the screen is less than a certain breakpoint
-        bool isSmallScreen = constraints.maxWidth < 600;
-
-        return Padding(
+    return Column(
+      children: [
+        Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: isSmallScreen
-              ? Column(
+          child: Row(
             children: [
-              _buildDropDown(index),
-              SizedBox(height: 16),
-              _buildTextField(index),
-              SizedBox(height: 16),
-              _buildUnitDropDown(index),
-            ],
-          )
-              : Row(
-            children: [
-              Expanded(child: _buildDropDown(index)),
-              SizedBox(width: 16),
-              Expanded(child: _buildTextField(index)),
-              SizedBox(width: 16),
-              Expanded(child: _buildUnitDropDown(index)),
+              Flexible(
+                flex: 2,
+                child: _buildDropDown(index, true),
+              ),
+              SizedBox(width: 8),
+              Flexible(
+                flex: 3,
+                child: _buildTextField(index),
+              ),
+              SizedBox(width: 8),
+              Flexible(
+                flex: 2,
+                child: _buildUnitDropDown(index, true),
+              ),
             ],
           ),
-        );
-      },
+        ),
+        if (index <
+            selectedCoffeeForms.length -
+                1) // Only add '+' if it's not the last row
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Text('+',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          ),
+      ],
     );
   }
 
-  Widget _buildDropDown(int index) {
+  Widget _buildDropDown(int index, bool isExpanded) {
     return DropdownButtonFormField<String>(
+      isExpanded: isExpanded,
       value: selectedCoffeeForms[index],
       items: coffeeForms.map((String value) {
         return DropdownMenuItem<String>(
@@ -171,21 +252,9 @@ class _MassTabState extends State<MassTab> {
     );
   }
 
-  Widget _buildTextField(int index) {
-    return TextFormField(
-      keyboardType: TextInputType.number,
-      onChanged: (value) {
-        enteredMasses[index] = double.tryParse(value) ?? 0;
-      },
-      decoration: InputDecoration(
-        labelText: 'Mass',
-        border: OutlineInputBorder(),
-      ),
-    );
-  }
-
-  Widget _buildUnitDropDown(int index) {
+  Widget _buildUnitDropDown(int index, bool isExpanded) {
     return DropdownButtonFormField<String>(
+      isExpanded: isExpanded,
       value: selectedMassUnits[index],
       items: massUnits.map((String value) {
         return DropdownMenuItem<String>(
@@ -205,16 +274,28 @@ class _MassTabState extends State<MassTab> {
     );
   }
 
+  Widget _buildTextField(int index) {
+    return TextFormField(
+      keyboardType: TextInputType.number,
+      onChanged: (value) {
+        enteredMasses[index] = double.tryParse(value) ?? 0;
+      },
+      decoration: InputDecoration(
+        labelText: 'Mass',
+        border: OutlineInputBorder(),
+      ),
+    );
+  }
+
   void _calculateTotalMass() {
     try {
       print("Calculating total mass...");
 
       Map<String, double> totalMassesPerCoffeeForm = {};
-      Map<String, double> conversionRatios =
-      Map<String, double>.from(conversionData['coffee_form_conversion'] as Map);
-      Map<String, double> massUnitConversion =
-      Map<String, double>.from(conversionData['mass_unit_conversion'] as Map);
-
+      Map<String, double> conversionRatios = Map<String, double>.from(
+          conversionData['coffee_form_conversion'] as Map);
+      Map<String, double> massUnitConversion = Map<String, double>.from(
+          conversionData['mass_unit_conversion'] as Map);
 
       for (int i = 0; i < selectedCoffeeForms.length; i++) {
         String coffeeForm = selectedCoffeeForms[i];
@@ -222,26 +303,26 @@ class _MassTabState extends State<MassTab> {
         String massUnit = selectedMassUnits[i];
 
         // Ensure all necessary data is available and not null.
-        if (conversionRatios[coffeeForm] == null || massUnitConversion[massUnit] == null) {
-          print("Data not available for coffee form: $coffeeForm or mass unit: $massUnit");
+        if (conversionRatios[coffeeForm] == null ||
+            massUnitConversion[massUnit] == null) {
+          print(
+              "Data not available for coffee form: $coffeeForm or mass unit: $massUnit");
           return;
         }
 
         double convertedMassToBase = rawMass * massUnitConversion[massUnit]!;
-        double convertedMassToGreen = convertedMassToBase / conversionRatios[coffeeForm]!;
+        double convertedMassToGreen =
+            convertedMassToBase / conversionRatios[coffeeForm]!;
 
         totalMassesPerCoffeeForm.update(
-            coffeeForm,
-                (existing) => existing + convertedMassToGreen,
-            ifAbsent: () => convertedMassToGreen
-        );
+            coffeeForm, (existing) => existing + convertedMassToGreen,
+            ifAbsent: () => convertedMassToGreen);
       }
 
       setState(() {
         totalMassResults = totalMassesPerCoffeeForm;
       });
       print("Total mass results: $totalMassResults");
-
     } catch (e) {
       print("Error during mass calculation: $e");
     }
@@ -325,7 +406,8 @@ class _MassTabState extends State<MassTab> {
               // Results Display
               (totalMassResults != null && totalMassResults!.isNotEmpty)
                   ? _buildTotalResultText()
-                  : Text("No results available.", style: TextStyle(fontSize: 16.0)),
+                  : Text("No results available.",
+                  style: TextStyle(fontSize: 16.0)),
             ],
           );
         },
@@ -336,8 +418,11 @@ class _MassTabState extends State<MassTab> {
   Widget _buildTotalResultText() {
     double totalConvertedResult = totalMassResults!.entries.map((entry) {
       double baseMass = entry.value;
-      double conversionRatio = conversionData['coffee_form_conversion'][selectedResultCoffeeForm] ?? 1.0;
-      double unitConversion = conversionData['mass_unit_conversion'][selectedResultMassUnit] ?? 1.0;
+      double conversionRatio = conversionData['coffee_form_conversion']
+      [selectedResultCoffeeForm] ??
+          1.0;
+      double unitConversion =
+          conversionData['mass_unit_conversion'][selectedResultMassUnit] ?? 1.0;
       return baseMass * conversionRatio / unitConversion;
     }).reduce((value, element) => value + element);
 
@@ -347,8 +432,8 @@ class _MassTabState extends State<MassTab> {
     );
   }
 
-
-  Widget _buildDropdown(String label, String selectedValue, List<String> items, ValueChanged<String?> onChanged) {
+  Widget _buildDropdown(String label, String selectedValue, List<String> items,
+      ValueChanged<String?> onChanged) {
     return DropdownButtonFormField<String>(
       value: selectedValue,
       items: items.map((String value) {
@@ -364,7 +449,6 @@ class _MassTabState extends State<MassTab> {
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -397,7 +481,8 @@ class _MassTabState extends State<MassTab> {
                       ElevatedButton(
                         onPressed: _addNewInputRow,
                         child: Text('+ Add Another Coffee Form'),
-                        style: ElevatedButton.styleFrom(primary: primaryColor),
+                        style: ElevatedButton.styleFrom(
+                            primary: primaryColor),
                       ),
                     ],
                   ),
@@ -420,6 +505,10 @@ class _MassTabState extends State<MassTab> {
 }
 
 class AreaTab extends StatefulWidget {
+  final Future<Map<String, dynamic>> conversionRules;
+  final String? selectedCountry;
+  AreaTab({required this.conversionRules, this.selectedCountry});
+
   @override
   _AreaTabState createState() => _AreaTabState();
 }
@@ -430,33 +519,60 @@ class _AreaTabState extends State<AreaTab> {
     "hectar": 1.0,
   };
 
+  late Map<String, dynamic> conversionData;
   List<TextEditingController> _controllers = [];
   List<String> _selectedUnits = ["hectar"];
   String _selectedResultUnit = "hectar";
   double? _convertedTotalArea;
+  bool isLoading = true;
+  String? error;
 
-  final ConversionRepository _repository = ConversionRepository();
+  _fetchConversionData() async {
+    try {
+      final conversionRules = await widget.conversionRules;
+      conversionData = widget.selectedCountry != null
+          ? conversionRules[widget.selectedCountry] ?? {}
+          : {};
+      _areaUnitConversion = Map<String, double>.from(conversionData) ?? {
+        "hectar": 1.0,
+      };
+
+      // Reset state when selected country changes
+      // _controllers.clear();
+      // _selectedUnits.clear();
+      // _convertedTotalArea = null;
+      // _selectedResultUnit = _areaUnitConversion.keys.first;
+      // _addNewInputRow();
+
+      setState(() {
+        isLoading = false;
+      });
+    } catch (e) {
+      print("Error during fetching conversion data for area: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to load conversion data")));
+      setState(() {
+        error = e.toString();
+        isLoading = false;
+      });
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadAreaConversionData();
+    _fetchConversionData();
     _addNewInputRow();
   }
 
-  Future<void> _loadAreaConversionData() async {
-    try {
-      _areaUnitConversion = await _repository.fetchAreaConversionRules();
-      print("area unit: " + _areaUnitConversion.toString());
-      if (_areaUnitConversion.isNotEmpty) {
-        setState(() {
-          _selectedUnits.add("hectar");
-          _selectedResultUnit = "hectar";
-        });
-      }
-    } catch (e) {
-      print("Error during fetching conversion data: $e");
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to load conversion data")));
+  @override
+  void didUpdateWidget(covariant AreaTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedCountry != widget.selectedCountry) {
+      setState(() {
+        isLoading = true;
+      });
+      _fetchConversionData();
     }
   }
 
@@ -470,13 +586,14 @@ class _AreaTabState extends State<AreaTab> {
       }
       print("result: " + totalAreaInSquareMeters.toString());
       setState(() {
-
-        _convertedTotalArea = totalAreaInSquareMeters / _areaUnitConversion[_selectedResultUnit]!;
+        _convertedTotalArea =
+            totalAreaInSquareMeters / _areaUnitConversion[_selectedResultUnit]!;
       });
     } catch (e) {
       // Handle parsing error
       print("Error during calculation: $e");
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Invalid input")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Invalid input")));
     }
   }
 
@@ -487,50 +604,74 @@ class _AreaTabState extends State<AreaTab> {
     });
   }
 
-
   Widget _buildInputRow(int index) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextFormField(
-              controller: _controllers[index],
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Area',
-                border: OutlineInputBorder(),
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Row(
+          children: [
+            Flexible(
+              flex: 2,
+              child: TextFormField(
+                controller: _controllers[index],
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Area',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
-          ),
-          SizedBox(width: 16),
-          Expanded(
-            child: DropdownButtonFormField<String>(
-              value: _selectedUnits[index],
-              items: _areaUnitConversion.keys.map((String unit) {
-                return DropdownMenuItem<String>(
-                  value: unit,
-                  child: Text(unit),
-                );
-              }).toList(),
-              onChanged: (newValue) {
-                setState(() {
-                  _selectedUnits[index] = newValue!;
-                });
-              },
-              decoration: InputDecoration(
-                labelText: 'Unit',
-                border: OutlineInputBorder(),
+            SizedBox(width: 8),
+            Flexible(
+              flex: 3,
+              child: DropdownButtonFormField<String>(
+                value: _selectedUnits[index],
+                items: _areaUnitConversion.keys.map((String unit) {
+                  return DropdownMenuItem<String>(
+                    value: unit,
+                    child: Text(unit),
+                  );
+                }).toList(),
+                onChanged: (newValue) {
+                  setState(() {
+                    _selectedUnits[index] = newValue!;
+                  });
+                },
+                decoration: InputDecoration(
+                  labelText: 'Unit',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    );
+      if (index < _controllers.length - 1)  // Only add '+' if it's not the last row
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          child: Text('+', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        ),
+    ]);
   }
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (error != null) {
+      return Scaffold(
+        body: Center(
+          child: Text(error!),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Area Conversion"),
@@ -550,7 +691,7 @@ class _AreaTabState extends State<AreaTab> {
                     children: [
                       ...List.generate(
                         _controllers.length,
-                            (index) => _buildInputRow(index),
+                        (index) => _buildInputRow(index),
                       ),
                       SizedBox(height: 20),
                       ElevatedButton(
@@ -576,7 +717,8 @@ class _AreaTabState extends State<AreaTab> {
                           Expanded(
                             child: DropdownButtonFormField<String>(
                               value: _selectedResultUnit,
-                              items: _areaUnitConversion.keys.map((String unit) {
+                              items:
+                                  _areaUnitConversion.keys.map((String unit) {
                                 return DropdownMenuItem<String>(
                                   value: unit,
                                   child: Text(unit),
@@ -607,7 +749,8 @@ class _AreaTabState extends State<AreaTab> {
                       if (_convertedTotalArea != null)
                         Text(
                           "Total Area: ${_convertedTotalArea!.toStringAsFixed(2)} $_selectedResultUnit",
-                          style: TextStyle(fontSize: 24.0, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              fontSize: 24.0, fontWeight: FontWeight.bold),
                         )
                       else
                         Text("Total Area will be displayed here.",
@@ -626,88 +769,73 @@ class _AreaTabState extends State<AreaTab> {
   }
 }
 
-class ConversionRepository {
-  final String massApiUrl = "https://raw.githubusercontent.com/aben-enveritas/enveritas_converter/master/mass_conversion.json";
-  final String areaApiUrl = "https://raw.githubusercontent.com/aben-enveritas/enveritas_converter/master/area_conversion.json";
+abstract class ConversionRepository {
+  final String apiUrl;
+  final String localStorageKey;
+  final String assetPath;
 
-  Future<Map<String, dynamic>> fetchMassConversionRules() async {
+  ConversionRepository(this.apiUrl, this.localStorageKey, this.assetPath);
+
+  Future<Map<String, dynamic>> fetchConversionRules() async {
     try {
-      final response = await http.get(Uri.parse(massApiUrl));
+      final response = await http.get(Uri.parse(apiUrl));
+      print("Fetched from: " + apiUrl);
       if (response.statusCode == 200) {
         final data = Map<String, dynamic>.from(jsonDecode(response.body));
-
-        // Save fetched data to local storage
-        await _saveToLocal("massConversion", data);
-
+        print(data);
+        await _saveToLocal(data);
         return data;
       } else {
         throw Exception('Failed to load conversion rules');
       }
     } catch (e) {
-      // Fallback: Load from local storage or assets
-      return await _loadMassFromLocalOrAssets();
+      print("E: "+ e.toString());
+      return await _loadFromLocalOrAssets();
     }
   }
 
-  Future<void> _saveToLocal(String key, Map<String, dynamic> data) async {
+  Future<void> _saveToLocal(Map<String, dynamic> data) async {
     final prefs = await SharedPreferences.getInstance();
-    prefs.setString(key, jsonEncode(data)); // Encode map to string and save to local storage
+    prefs.setString(localStorageKey, jsonEncode(data));
   }
 
-  Future<Map<String, dynamic>> _loadMassFromLocalOrAssets() async {
+  Future<Map<String, dynamic>> _loadFromLocalOrAssets() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedData = prefs.getString("massConversion"); // Retrieve from local storage
-
-    // If there's data in local storage, return it. Otherwise, load from assets.
+    final savedData = prefs.getString(localStorageKey);
     if (savedData != null && savedData.isNotEmpty) {
       return Map<String, dynamic>.from(jsonDecode(savedData));
     } else {
-      final data = await rootBundle.loadString('assets/mass_conversion.json');
+      final data = await rootBundle.loadString(assetPath);
       return Map<String, dynamic>.from(jsonDecode(data));
     }
   }
+}
 
-  Future<Map<String, dynamic>> _loadMassFromAssets(String type) async {
-    final data = await rootBundle.loadString('assets/mass_conversion.json');
-    return Map<String, dynamic>.from(jsonDecode(data));
-  }
-
-
-  Future<Map<String, double>> fetchAreaConversionRules() async {
-    try {
-      final response = await http.get(Uri.parse(areaApiUrl));
-      if (response.statusCode == 200) {
-        final data = Map<String, double>.from(jsonDecode(response.body));
-
-        // Save fetched data to local storage
-        await _saveToLocal("areaConversion", data);
-
-        return data;
-      } else {
-        throw Exception('Failed to load area conversion rules');
-      }
-    } catch (e) {
-      // Fallback: Load from local storage or assets
-      return await _loadAreaFromLocalOrAssets();
-    }
-  }
-
-  Future<Map<String, double>> _loadAreaFromLocalOrAssets() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedData = prefs.getString("areaConversion"); // Retrieve from local storage
-
-    // If there's data in local storage, return it. Otherwise, load from assets.
-    if (savedData != null && savedData.isNotEmpty) {
-      return Map<String, double>.from(jsonDecode(savedData));
+class CountriesRepository {
+  Future<List<String>> fetchCountries() async {
+    final countriesApiUrl = "https://raw.githubusercontent.com/aben-enveritas/enveritas_conversion_rules/main/countries.json";
+    final response = await http.get(Uri.parse(countriesApiUrl));
+    if (response.statusCode == 200) {
+      List<dynamic> countriesList = jsonDecode(response.body);
+      return countriesList.cast<String>();
     } else {
-      final data = await rootBundle.loadString('assets/area_conversion.json');
-      return Map<String, double>.from(jsonDecode(data));
+      throw Exception('Failed to load countries');
     }
-  }
-
-  Future<Map<String, double>> _loadAreaConversionFromAssets() async {
-    final data = await rootBundle.loadString('assets/area_conversion.json');
-    return Map<String, double>.from(jsonDecode(data));
   }
 }
 
+class MassConversionRepository extends ConversionRepository {
+  MassConversionRepository()
+      : super(
+      "https://raw.githubusercontent.com/aben-enveritas/enveritas_conversion_rules/main/mass_conversion.json",
+      "massConversion",
+      'assets/mass_conversion.json');
+}
+
+class AreaConversionRepository extends ConversionRepository {
+  AreaConversionRepository()
+      : super(
+      "https://raw.githubusercontent.com/aben-enveritas/enveritas_conversion_rules/main/area_conversion.json",
+      "areaConversion",
+      'assets/area_conversion.json');
+}
