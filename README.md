@@ -23,3 +23,18 @@ This project is developed with Flutter. To run this application on your local ma
 
 ```sh
 git clone [https://github.com/yourusername/yourrepository](https://github.com/aben-enveritas/enveritas_converter)https://github.com/aben-enveritas/enveritas_converter.git
+```
+
+2. **Install Dependencies:**
+
+Navigate to your project's root folder and run:
+
+```sh
+flutter pub get
+```
+3. **Run the Application:**
+Once the dependencies are installed, run the application with the following command:
+
+```sh
+flutter run
+```
